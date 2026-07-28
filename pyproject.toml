@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "garmin-mcp"
+version = "0.1.0"
+description = "MCP server exposing Garmin Connect data (activities, sleep, heart rate, body battery) as tools"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+keywords = ["mcp", "garmin", "garmin-connect", "llm", "ai-agents"]
+dependencies = [
+    "garminconnect",
+    "curl_cffi",
+    "fastmcp>=2.0.0",
+]
+
+[project.scripts]
+garmin-mcp = "server:main"
+garmin-mcp-auth = "auth_setup:main"
+
+[tool.setuptools]
+py-modules = ["server", "auth_setup"]
