@@ -16,9 +16,7 @@ from __future__ import annotations
 import os
 import sys
 
-from garminconnect import Garmin
-
-TOKEN_STORE = os.path.expanduser("~/.garminconnect")
+from garmin_auth import TOKEN_STORE, login_interactive
 
 
 def main() -> None:
@@ -32,12 +30,7 @@ def main() -> None:
         )
         sys.exit(1)
 
-    client = Garmin(
-        email,
-        password,
-        prompt_mfa=lambda: input("Enter MFA code: "),
-    )
-    client.login(TOKEN_STORE)
+    login_interactive(email, password)
     print(f"Login successful. Tokens cached at {TOKEN_STORE}")
 
 

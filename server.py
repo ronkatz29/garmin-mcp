@@ -17,20 +17,14 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import sys
 from datetime import date
 
 from fastmcp import FastMCP
-from garminconnect import (
-    Garmin,
-    GarminConnectAuthenticationError,
-    GarminConnectConnectionError,
-)
+
+from garmin_auth import get_client
 
 logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
-
-TOKEN_STORE = os.path.expanduser("~/.garminconnect")
 
 mcp = FastMCP(
     name="garmin-mcp",
@@ -44,30 +38,6 @@ omit them to default to today.
   get_body_battery          Body battery levels for a date
 """,
 )
-
-_client: Garmin | None = None
-
-
-def get_client() -> Garmin:
-    global _client
-    if _client is None:
-        # Credentials are optional here: a valid cached token at TOKEN_STORE
-        # (created via auth_setup.py) is enough for normal use. Email/password
-        # are only used as a fallback if the cache is missing or expired.
-        email = os.environ.get("GARMIN_EMAIL")
-        password = os.environ.get("GARMIN_PASSWORD")
-        client = Garmin(email, password)
-        try:
-            client.login(TOKEN_STORE)
-        except (GarminConnectAuthenticationError, GarminConnectConnectionError) as exc:
-            raise RuntimeError(
-                f"Garmin login failed ({exc}). Run auth_setup.py interactively "
-                "(with GARMIN_EMAIL/GARMIN_PASSWORD set) to refresh the cached "
-                "token or complete MFA."
-            ) from exc
-        _client = client
-    return _client
-
 
 def _today() -> str:
     return date.today().isoformat()

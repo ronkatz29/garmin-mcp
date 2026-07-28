@@ -19,6 +19,8 @@ dependencies = [
 [project.scripts]
 garmin-mcp = "server:main"
 garmin-mcp-auth = "auth_setup:main"
+garmin-fetch = "scripts.fetch:main"
 
 [tool.setuptools]
-py-modules = ["server", "auth_setup"]
+py-modules = ["server", "auth_setup", "garmin_auth"]
+packages = ["scripts"]
