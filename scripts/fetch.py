@@ -27,7 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from garmin_auth import get_client  # noqa: E402
-from scripts import gist_token  # noqa: E402
+from scripts import token_sync  # noqa: E402
 
 
 def _today() -> str:
@@ -72,11 +72,11 @@ def main() -> None:
     p.set_defaults(func=cmd_body_battery)
 
     args = parser.parse_args()
-    gist_token.pull()
+    token_sync.pull()
     try:
         result = args.func(args)
     finally:
-        gist_token.push()
+        token_sync.push()
     print(json.dumps(result, indent=2))
 
 

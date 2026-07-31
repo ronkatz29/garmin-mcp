@@ -55,9 +55,9 @@ garmin_auth.py  (TOKEN_STORE, get_client(), login_interactive())
    ├── auth_setup.py       one-time interactive login (handles MFA)
    └── scripts/fetch.py    plain CLI, no MCP — same data, used by the
                             remote Garmin → Calendar sync routine (claude.ai)
-                              └── scripts/gist_token.py   syncs the token
-                                  with a secret gist so the routine stays
-                                  authenticated across runs (see below)
+                              └── scripts/token_sync.py   syncs the token
+                                  via a dedicated git branch so the routine
+                                  stays authenticated across runs (see below)
 ```
 
 `scripts/fetch.py` exists so the remote routine can clone this repo and call
@@ -75,44 +75,45 @@ python3 -m scripts.fetch body-battery [--start YYYY-MM-DD] [--end YYYY-MM-DD]
 Garmin's access token lasts ~23h, and `garminconnect` rotates the refresh
 token on every use — so a token pushed to the routine once eventually goes
 stale no matter what. The routine has no persistent storage between runs,
-and the previous approach (a static `GARMIN_TOKENS_B64` env var, hand
-re-pasted whenever it expired) couldn't survive that rotation.
+and two earlier approaches didn't survive that rotation:
 
-Instead, `scripts/fetch.py` syncs the token through a secret GitHub gist
-(`scripts/gist_token.py`) on every invocation:
+- A static `GARMIN_TOKENS_B64` env var, hand re-pasted whenever it expired
+  — no way to update it without a human in the loop.
+- A secret GitHub gist, synced via the Gists API — routines are restricted
+  to their attached repositories, so `api.github.com/gists/...` calls get
+  a 403 regardless of which token signs the request.
 
-1. **Pull**: fetch the current token from the gist before login.
-2. Login refreshes it if needed (rotating the refresh token in the process).
-3. **Push**: write the (possibly refreshed) token back to the gist.
+What actually works: a dedicated branch, `claude/garmin-token-sync`, on
+*this* repo. `claude/`-prefixed branches are always push-accepted for a
+routine, and the repo is already attached, so `scripts/token_sync.py`
+rides the same git credentials the routine already has — no separate
+token or secret needed. `scripts/fetch.py` calls it on every invocation:
+
+1. **Pull**: clone that branch, copy `garmin_tokens.json` into the local
+   token store, before login.
+2. Login refreshes it if needed (rotating the refresh token in the
+   process).
+3. **Push**: commit and push the (possibly refreshed) token store back to
+   the branch.
 
 This makes the auth loop fully remote — the routine keeps itself
-authenticated indefinitely without any local machine or manual re-paste.
-It's gated on `GARMIN_GIST_TOKEN` (a GitHub PAT scoped to `gist` only)
-being set; without it, `pull`/`push` no-op, so local/MCP usage is
-unaffected.
+authenticated indefinitely with no local machine involved and no manual
+re-paste, ever.
 
-**One-time setup for the routine:**
-
-1. Create a classic GitHub PAT with only the `gist` scope (github.com →
-   Settings → Developer settings → Personal access tokens → Tokens
-   (classic)). No expiration, or a long one — it doesn't need frequent
-   rotation like the Garmin token does.
-2. Add it as `GARMIN_GIST_TOKEN` in the routine's environment variables.
-3. The routine's Step 0 just needs to run `python3 -m scripts.fetch
-   activities --limit N` (or another subcommand) — the gist sync happens
-   automatically inside `fetch.py`. No `GARMIN_TOKENS_B64` decode step
-   needed anymore.
+**Nothing to configure on the routine for this** — it reuses the repo
+access the routine already has. The routine's Step 0 just needs to run
+`python3 -m scripts.fetch activities --limit N` (or another subcommand);
+the sync happens automatically inside `fetch.py`.
 
 If the routine ever does hit a 401 (e.g. Garmin invalidated the refresh
-token entirely, or the gist got out of sync), refresh locally and reseed
-the gist:
+token entirely), refresh locally and push:
 
 ```bash
 GARMIN_EMAIL=... GARMIN_PASSWORD=... .venv/bin/python3 auth_setup.py
-gh gist edit d75c5db79f71392c36b8033a298ef27c -a ~/.garminconnect/garmin_tokens.json
+.venv/bin/python3 -m scripts.token_sync push
 ```
 
 ## Notes
 
 - This library is unofficial and reverse-engineered from Garmin's mobile app; it can break when Garmin changes internal endpoints.
-- Credentials should only live in `~/.claude.json`'s local `env` block, the remote routine's own env var settings, or a local, gitignored `.env` — never committed to this repo. The Garmin token itself lives in a secret gist (`d75c5db79f71392c36b8033a298ef27c`), not in this repo.
+- Credentials should only live in `~/.claude.json`'s local `env` block, the remote routine's own env var settings, or a local, gitignored `.env` — never committed to `main`. The Garmin token itself lives only on the `claude/garmin-token-sync` branch, not `main`.
