@@ -55,6 +55,9 @@ garmin_auth.py  (TOKEN_STORE, get_client(), login_interactive())
    ├── auth_setup.py       one-time interactive login (handles MFA)
    └── scripts/fetch.py    plain CLI, no MCP — same data, used by the
                             remote Garmin → Calendar sync routine (claude.ai)
+                              └── scripts/gist_token.py   syncs the token
+                                  with a secret gist so the routine stays
+                                  authenticated across runs (see below)
 ```
 
 `scripts/fetch.py` exists so the remote routine can clone this repo and call
@@ -67,27 +70,49 @@ python3 -m scripts.fetch sleep [--date YYYY-MM-DD]
 python3 -m scripts.fetch body-battery [--start YYYY-MM-DD] [--end YYYY-MM-DD]
 ```
 
-## Refreshing the token used by the remote routine
+## How the remote routine stays authenticated
 
-The remote routine reads Garmin auth from its own `GARMIN_TOKENS_B64` env
-var (base64 of `~/.garminconnect/garmin_tokens.json`), decoded into its
-sandbox at the start of each run. It drifts out of sync whenever the local
-token is refreshed and the routine's copy isn't updated — this is what
-caused a prior 401 failure.
+Garmin's access token lasts ~23h, and `garminconnect` rotates the refresh
+token on every use — so a token pushed to the routine once eventually goes
+stale no matter what. The routine has no persistent storage between runs,
+and the previous approach (a static `GARMIN_TOKENS_B64` env var, hand
+re-pasted whenever it expired) couldn't survive that rotation.
 
-When the routine fails with a 401:
+Instead, `scripts/fetch.py` syncs the token through a secret GitHub gist
+(`scripts/gist_token.py`) on every invocation:
+
+1. **Pull**: fetch the current token from the gist before login.
+2. Login refreshes it if needed (rotating the refresh token in the process).
+3. **Push**: write the (possibly refreshed) token back to the gist.
+
+This makes the auth loop fully remote — the routine keeps itself
+authenticated indefinitely without any local machine or manual re-paste.
+It's gated on `GARMIN_GIST_TOKEN` (a GitHub PAT scoped to `gist` only)
+being set; without it, `pull`/`push` no-op, so local/MCP usage is
+unaffected.
+
+**One-time setup for the routine:**
+
+1. Create a classic GitHub PAT with only the `gist` scope (github.com →
+   Settings → Developer settings → Personal access tokens → Tokens
+   (classic)). No expiration, or a long one — it doesn't need frequent
+   rotation like the Garmin token does.
+2. Add it as `GARMIN_GIST_TOKEN` in the routine's environment variables.
+3. The routine's Step 0 just needs to run `python3 -m scripts.fetch
+   activities --limit N` (or another subcommand) — the gist sync happens
+   automatically inside `fetch.py`. No `GARMIN_TOKENS_B64` decode step
+   needed anymore.
+
+If the routine ever does hit a 401 (e.g. Garmin invalidated the refresh
+token entirely, or the gist got out of sync), refresh locally and reseed
+the gist:
 
 ```bash
-./scripts/print_token_b64.sh
+GARMIN_EMAIL=... GARMIN_PASSWORD=... .venv/bin/python3 auth_setup.py
+gh gist edit d75c5db79f71392c36b8033a298ef27c -a ~/.garminconnect/garmin_tokens.json
 ```
-
-This verifies the local token still logs in (refresh first via
-`auth_setup.py` if not), then prints the base64 value to paste into the
-routine's `GARMIN_TOKENS_B64` env var in claude.ai routine settings.
-There's no known API to update a routine's env vars remotely, so this
-paste step stays manual.
 
 ## Notes
 
 - This library is unofficial and reverse-engineered from Garmin's mobile app; it can break when Garmin changes internal endpoints.
-- Credentials should only live in `~/.claude.json`'s local `env` block, the remote routine's own env var settings, or a local, gitignored `.env` — never committed to this repo.
+- Credentials should only live in `~/.claude.json`'s local `env` block, the remote routine's own env var settings, or a local, gitignored `.env` — never committed to this repo. The Garmin token itself lives in a secret gist (`d75c5db79f71392c36b8033a298ef27c`), not in this repo.
