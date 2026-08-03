@@ -87,7 +87,17 @@ What actually works: a dedicated branch, `claude/garmin-token-sync`, on
 *this* repo. `claude/`-prefixed branches are always push-accepted for a
 routine, and the repo is already attached, so `scripts/token_sync.py`
 rides the same git credentials the routine already has — no separate
-token or secret needed. `scripts/fetch.py` calls it on every invocation:
+token or secret needed.
+
+**Every consumer syncs, not just the routine.** Garmin's refresh token
+is single-use and rotates on every login — so if only the remote routine
+synced, a local MCP session refreshing the token (e.g. from normal daily
+use) would silently invalidate the branch's copy without updating it,
+and the routine's next run would 401 on a refresh token that's already
+been burned, with no obvious trigger. To close that gap, the sync lives
+in `garmin_auth.get_client()` itself (and `login_interactive()`) — the
+one chokepoint every consumer (local MCP `server.py`, `auth_setup.py`,
+and the remote routine's `scripts/fetch.py`) calls through:
 
 1. **Pull**: clone that branch, copy `garmin_tokens.json` into the local
    token store, before login.
@@ -96,21 +106,22 @@ token or secret needed. `scripts/fetch.py` calls it on every invocation:
 3. **Push**: commit and push the (possibly refreshed) token store back to
    the branch.
 
-This makes the auth loop fully remote — the routine keeps itself
-authenticated indefinitely with no local machine involved and no manual
-re-paste, ever.
+This makes the auth loop fully remote and fully consistent — every
+consumer, local or remote, reads and writes the same source of truth, so
+no login anywhere can silently invalidate another's cached copy.
 
 **Nothing to configure on the routine for this** — it reuses the repo
 access the routine already has. The routine's Step 0 just needs to run
 `python3 -m scripts.fetch activities --limit N` (or another subcommand);
-the sync happens automatically inside `fetch.py`.
+the sync happens automatically inside `get_client()`.
 
 If the routine ever does hit a 401 (e.g. Garmin invalidated the refresh
-token entirely), refresh locally and push:
+token entirely — a real password change, not just normal rotation),
+refresh locally; `auth_setup.py` pulls and pushes automatically now, so
+no separate `token_sync push` step is needed:
 
 ```bash
 GARMIN_EMAIL=... GARMIN_PASSWORD=... .venv/bin/python3 auth_setup.py
-.venv/bin/python3 -m scripts.token_sync push
 ```
 
 ## Notes
