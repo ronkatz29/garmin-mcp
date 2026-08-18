@@ -5,10 +5,7 @@ garmin-mcp — Garmin Connect data as MCP tools
 Exposes activities, sleep, resting heart rate, and body battery from
 Garmin Connect (via the unofficial `garminconnect` library).
 
-Auth: run `auth_setup.py` once (interactively, handles MFA) to create a
-cached token at ~/.garminconnect. This server reuses that cache — it has
-no TTY, so it cannot prompt for MFA itself. If the cache is missing or
-expired, tools return an error telling you to re-run auth_setup.py.
+Auth: set GARMIN_EMAIL / GARMIN_PASSWORD env vars (see garmin_auth.py).
 
 Transport: stdio (Claude Code / Claude Desktop MCP config)
 """
