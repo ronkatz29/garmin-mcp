@@ -14,13 +14,15 @@ dependencies = [
     "garminconnect",
     "curl_cffi",
     "fastmcp>=2.0.0",
+    "google-api-python-client",
+    "google-auth",
 ]
 
 [project.scripts]
 garmin-mcp = "server:main"
-garmin-mcp-auth = "auth_setup:main"
 garmin-fetch = "scripts.fetch:main"
+garmin-calendar-sync = "scripts.sync_calendar:main"
 
 [tool.setuptools]
-py-modules = ["server", "auth_setup", "garmin_auth"]
+py-modules = ["server", "garmin_auth"]
 packages = ["scripts"]

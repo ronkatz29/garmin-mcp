@@ -53,13 +53,13 @@ Auth and login logic (`garmin_auth.py`) is shared by every consumer in this repo
 
 ```
 garmin_auth.py  (get_client())
-   ├── server.py           MCP server (stdio) — used by local Claude Code sessions
-   └── scripts/fetch.py    plain CLI, no MCP — same data, used by the
-                            remote Garmin → Calendar sync routine (claude.ai)
+   ├── server.py               MCP server (stdio) — used by local Claude Code sessions
+   ├── scripts/fetch.py        plain CLI, no MCP — ad hoc data pulls
+   └── scripts/sync_calendar.py  daily Garmin -> Google Calendar sync,
+                                  run by .github/workflows/garmin-calendar-sync.yml
 ```
 
-`scripts/fetch.py` exists so the remote routine can clone this repo and call
-real, reviewed code instead of carrying its own copy-pasted fetch logic:
+`scripts/fetch.py`:
 
 ```bash
 python3 -m scripts.fetch activities [--limit N]
@@ -68,28 +68,58 @@ python3 -m scripts.fetch sleep [--date YYYY-MM-DD]
 python3 -m scripts.fetch body-battery [--start YYYY-MM-DD] [--end YYYY-MM-DD]
 ```
 
-## How the remote routine stays authenticated
+## Garmin → Google Calendar sync
 
-It just logs in fresh every run with `GARMIN_EMAIL`/`GARMIN_PASSWORD` set as
-env vars on the routine (claude.ai Settings → Scheduled Tasks). No cached
-token, no shared state between consumers, nothing to expire or resync.
+`scripts/sync_calendar.py` runs daily on a free GitHub Actions cron
+(`.github/workflows/garmin-calendar-sync.yml`, `workflow_dispatch` also
+available for manual runs). It's a plain deterministic script — no LLM
+involved at runtime:
 
-Two earlier approaches were tried and dropped because they depended on a
-persisted token surviving between runs, which this account's no-MFA login
-doesn't need:
+- Pulls Garmin activities from the last 2 days.
+- Matches each one to an existing calendar event by time overlap (±60 min
+  on the same day); creates a new event at the activity's real start/end
+  time if nothing matches.
+- Applies the standing convention: `colorId "5"` (yellow), title
+  `{activityName} ({distance}km)`, description
+  `Auto-added from Garmin: {distance}km, {duration} min, pace {pace}, {calories} cal`.
 
-- A static `GARMIN_TOKENS_B64` env var, hand re-pasted whenever it expired
-  — no way to update it without a human in the loop.
-- A dedicated git branch (`claude/garmin-token-sync`) that pulled/pushed a
-  cached token around every consumer — fragile in practice: Garmin's
-  refresh token is single-use, so any two consumers refreshing close
-  together (or the routine's push silently failing in its sandbox) would
-  invalidate each other's copy, reliably producing 401s the next day with
-  no obvious trigger.
+**Required GitHub repo secrets** (Settings → Secrets and variables → Actions):
 
-If Garmin ever does add MFA to this account, plain credential login will
-stop working for the routine (no TTY to prompt for a code), and some form
-of token caching will need to come back.
+- `GARMIN_EMAIL`, `GARMIN_PASSWORD` — same as local auth, no token needed.
+- `GOOGLE_SERVICE_ACCOUNT_JSON` — full JSON key of a Google Cloud service
+  account with the Calendar API enabled. Share the target calendar with
+  the service account's email address (Settings and sharing → Add people
+  → grant "Make changes to events").
+- `GOOGLE_CALENDAR_ID` — the calendar to write to.
+
+**Local test run:**
+
+```bash
+GARMIN_EMAIL=you@example.com \
+GARMIN_PASSWORD=yourpassword \
+GOOGLE_SERVICE_ACCOUNT_JSON="$(cat service-account.json)" \
+GOOGLE_CALENDAR_ID=you@example.com \
+.venv/bin/python3 scripts/sync_calendar.py
+```
+
+This replaced an earlier claude.ai scheduled routine that ran the same
+logic as an inline, un-versioned prompt script. That approach depended on
+a Garmin session token surviving between runs (via a `GARMIN_TOKENS_B64`
+env var, later a dedicated git branch pushing/pulling the cached token
+file) and kept breaking: Garmin's refresh token is single-use, so any
+failed push left the next run stuck on an already-dead token. Since this
+account has no MFA, `garmin_auth.py` just logs in fresh with plain
+credentials every run instead — nothing cached, nothing to expire or
+desync between runs or consumers.
+
+If Garmin ever adds MFA to this account, plain credential login will stop
+working unattended (no TTY to prompt for a code), and some form of token
+caching + refresh will need to come back for this workflow.
+
+## Credential rotation
+
+If the Garmin password ever changes, update the `GARMIN_PASSWORD` GitHub
+secret — no other file or token needs to change, since nothing is cached.
 
 ## Notes
 
