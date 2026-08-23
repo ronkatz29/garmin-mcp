@@ -1,0 +1,35 @@
+name: Google Calendar -> Garmin sync
+
+on:
+  schedule:
+    # 07:00 Asia/Jerusalem (UTC+3 in summer, UTC+2 in winter) — 04:00 UTC
+    # covers both; runs after the Garmin -> Calendar sync (06:00 local).
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+    inputs:
+      lookback_days:
+        description: "Days back to process (default 2; widen for manual backfills/testing)"
+        required: false
+        default: "2"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run sync
+        env:
+          GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
+          GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+          SYNC_LOOKBACK_DAYS: ${{ github.event.inputs.lookback_days || '2' }}
+        run: python3 scripts/sync_garmin_from_calendar.py
