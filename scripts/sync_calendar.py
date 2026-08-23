@@ -33,7 +33,7 @@ from google.oauth2.service_account import Credentials  # noqa: E402
 from googleapiclient.discovery import build  # noqa: E402
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
-LOOKBACK_DAYS = 2
+LOOKBACK_DAYS = int(os.environ.get("SYNC_LOOKBACK_DAYS", "2"))
 MATCH_WINDOW_MIN = 60
 LOCAL_TZ = ZoneInfo("Asia/Jerusalem")
 YELLOW_COLOR_ID = "5"
