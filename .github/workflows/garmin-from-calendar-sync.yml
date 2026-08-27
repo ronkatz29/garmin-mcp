@@ -2,9 +2,9 @@ name: Google Calendar -> Garmin sync
 
 on:
   schedule:
-    # 07:00 Asia/Jerusalem (UTC+3 in summer, UTC+2 in winter) — 04:00 UTC
-    # covers both; runs after the Garmin -> Calendar sync (06:00 local).
-    - cron: "0 4 * * *"
+    # 21:00 Asia/Jerusalem (UTC+3 in summer, UTC+2 in winter) — 18:00 UTC
+    # covers both; runs after the Garmin -> Calendar sync (20:00 local).
+    - cron: "0 18 * * *"
   workflow_dispatch:
     inputs:
       lookback_days:
